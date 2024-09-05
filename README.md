@@ -10,7 +10,7 @@ Installation
 To get started with the Dental Appointment Scheduling System, follow these steps:
 
 Clone the repository:
-git clone https://github.com/yourusername/dental-scheduling-system.git
+git clone https://github.com/Thaisbaramar/Dentist-Appointment-Callendar-GUI
 
 Navigate to the project directory:
 cd dental-scheduling-system
@@ -86,6 +86,9 @@ Helps categorize users and manage permissions within the application.
 File Persistence
 
 Saving Appointments
+
 The ScheduledAppointmentFrame class automatically saves scheduled appointments to a file named scheduledAppointments.txt whenever changes are made.
+
 Loading Appointments
+
 The TimeSlotLoader class is responsible for loading scheduled appointments from a file when the application starts, ensuring that any previously saved appointments are available for the user.
