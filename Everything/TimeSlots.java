@@ -1,60 +1,60 @@
- package Everything;
+package Everything;
 
 import javax.swing.*;
+
+import Printing.Appointment;
+import Printing.User;
+import Printing.UserManager;
+
 import java.awt.*;
 import java.time.LocalDate;
-import java.util.*;
+import java.util.Optional;
 
 public class TimeSlots extends JFrame {
-    private UserType currentUser;
-    private int selectedDay;
-    private int selectedMonth;
-    private int selectedYear;
-    private Map<String, Set<String>> scheduledAppointments;
-    private CalendarPage calendarPage;
-    private String filename = "scheduledAppointments.ser";
+    private final User currentUser;
+    private final UserManager userManager;
+    private final AppointmentStore store;
+    private final LocalDate date;
+    private final int selectedDay;
+    private final CalendarPage calendarPage;
+    private JPanel slotsPanel;
 
-    public TimeSlots(UserType user, int selectedDay, int selectedMonth, int selectedYear, CalendarPage calendarPage) {
+    public TimeSlots(User user, UserManager userManager, AppointmentStore store,
+                     int selectedDay, int selectedMonth, int selectedYear, CalendarPage calendarPage) {
         this.currentUser = user;
+        this.userManager = userManager;
+        this.store = store;
         this.selectedDay = selectedDay;
-        this.selectedMonth = selectedMonth;
-        this.selectedYear = selectedYear;
+        this.date = LocalDate.of(selectedYear, selectedMonth, selectedDay);
         this.calendarPage = calendarPage;
-        this.scheduledAppointments = loadScheduledAppointmentsFromFile();
 
+        setTitle("Time Slots");
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(250, 450);
+        setSize(320, 480);
         setLocationRelativeTo(null);
 
         initUI();
     }
 
     private void initUI() {
-        JPanel datePanel = createDatePanel();
-        JPanel slotsPanel = createSlotsPanel();
-        JScrollPane scrollPane = new JScrollPane(slotsPanel);
+        JPanel datePanel = new JPanel();
+        datePanel.add(new JLabel("Date: " + date));
+
+        slotsPanel = new JPanel(new GridLayout(0, 1, 5, 5)); // Vertical layout
+        fillSlots();
 
         add(datePanel, BorderLayout.NORTH);
-        add(scrollPane, BorderLayout.CENTER);
+        add(new JScrollPane(slotsPanel), BorderLayout.CENTER);
         add(createReturnButton(), BorderLayout.SOUTH);
     }
 
-    private JPanel createDatePanel() {
-        JPanel datePanel = new JPanel();
-        LocalDate currentDate = LocalDate.of(selectedYear, selectedMonth, selectedDay);
-        JLabel dateLabel = new JLabel("Date: " + currentDate);
-        datePanel.add(dateLabel);
-        return datePanel;
-    }
-
-    private JPanel createSlotsPanel() {
-        JPanel slotsPanel = new JPanel(new GridLayout(0, 1, 5, 5)); // Vertical layout
-        for (int i = 8; i <= 17; i++) {
-            String time = String.format("%02d:00", i);
-            TimeSlotPanel timeSlotPanel = new TimeSlotPanel(time);
-            slotsPanel.add(timeSlotPanel);
+    private void fillSlots() {
+        slotsPanel.removeAll();
+        for (String time : AppointmentStore.SLOTS) {
+            slotsPanel.add(new TimeSlotPanel(time));
         }
-        return slotsPanel;
+        slotsPanel.revalidate();
+        slotsPanel.repaint();
     }
 
     private JButton createReturnButton() {
@@ -62,6 +62,7 @@ public class TimeSlots extends JFrame {
         returnButton.addActionListener(e -> {
             dispose();
             if (calendarPage != null) {
+                calendarPage.refresh();
                 calendarPage.setVisible(true); // Show the CalendarPage again if available
             }
         });
@@ -74,45 +75,58 @@ public class TimeSlots extends JFrame {
         public TimeSlotPanel(String time) {
             setLayout(new FlowLayout(FlowLayout.CENTER));
             timeButton = new JButton(time);
-            timeButton.setPreferredSize(new Dimension(80, 30));
+            timeButton.setPreferredSize(new Dimension(230, 30));
             timeButton.setBackground(Color.WHITE);
             timeButton.addActionListener(e -> openScheduleManaging(time));
             add(timeButton);
             updateSlotAvailability(time);
         }
 
+        // What the button shows and whether it can be clicked depends on the user's permissions
         private void updateSlotAvailability(String time) {
-            if (isSlotOccupied(time)) {
+            Optional<Appointment> booked = store.find(date, time);
+            boolean past = AppointmentStore.isPast(date, time);
+            if (booked.isPresent()) {
+                Appointment a = booked.get();
                 timeButton.setForeground(Color.GRAY);
+                if (store.canSee(currentUser, a)) {
+                    // Dentist and secretary see who it is; a patient sees only their own
+                    timeButton.setText(time + "  -  " + a.getName()
+                            + (a.getStatus() == Appointment.Status.CONFIRMED ? "  (confirmed)" : "  (pending)"));
+                    timeButton.setEnabled(!past && store.canCancel(currentUser, a));
+                } else {
+                    timeButton.setText(time + "  -  Booked");
+                    timeButton.setEnabled(false);
+                }
+            } else if (past) {
+                timeButton.setEnabled(false);
+            } else if (!canBookAnything()) {
+                timeButton.setText(time + "  -  Free");
                 timeButton.setEnabled(false);
             }
         }
 
         private void openScheduleManaging(String time) {
-            ScheduleManaging scheduleManaging = new ScheduleManaging(time, scheduledAppointments);
+            ScheduleManaging scheduleManaging = new ScheduleManaging(currentUser, userManager, store, date, time, () -> {
+                fillSlots();
+                if (calendarPage != null) {
+                    calendarPage.refresh();
+                }
+            });
             scheduleManaging.setVisible(true);
         }
     }
 
-    private boolean isSlotOccupied(String time) {
-        String key = getDateString(selectedDay, selectedMonth, selectedYear);
-        return scheduledAppointments.containsKey(key) && scheduledAppointments.get(key).contains(time);
-    }
-
-    private String getDateString(int day, int month, int year) {
-        return String.format("%04d-%02d-%02d", year, month, day);
-    }
-
-    private Map<String, Set<String>> loadScheduledAppointmentsFromFile() {
-        Map<String, Set<String>> loadedAppointments = new HashMap<>();
-        // Implement loading from file
-        return loadedAppointments;
+    private boolean canBookAnything() {
+        return currentUser.hasPermission(Permission.BOOK_FOR_SELF)
+                || currentUser.hasPermission(Permission.BOOK_FOR_PATIENTS);
     }
 
     public static void main(String[] args) {
-        // Example usage
-        UserType userType = UserType.CLIENT;
-        TimeSlots timeSlots = new TimeSlots(userType, 1, 1, 2024, null); // null as calendarPage, adjust accordingly
+        UserManager userManager = new UserManager();
+        userManager.ensureUser("patient1@example.com", "patient1", UserType.CLIENT, "Test Patient");
+        TimeSlots timeSlots = new TimeSlots(userManager.getUserByEmail("patient1@example.com"), userManager,
+                new AppointmentStore(), 1, 1, 2030, null);
         timeSlots.setVisible(true);
     }
 }

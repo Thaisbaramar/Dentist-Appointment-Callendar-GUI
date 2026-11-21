@@ -1,50 +1,71 @@
 package Everything;
 import javax.swing.*;
 
+import Printing.User;
 import Printing.UserManager;
 
 import java.awt.*;
 import java.awt.event.*;
 
+/**
+ * Three ways to open it:
+ * - from the login page: a visitor creates their own patient account
+ * - a secretary (REGISTER_PATIENTS): registers a patient
+ * - staff (MANAGE_ACCOUNTS): creates an account of any type
+ */
 public class RegistrationPage extends JFrame {
     private JTextField nameField;
     private JTextField emailField;
     private JPasswordField passwordField;
     private JPasswordField confirmPasswordField;
+    private JComboBox<UserType> typeBox; // only for MANAGE_ACCOUNTS
 
-    // Reference to the user manager
-    private UserManager userManager;
+    private final UserManager userManager;
+    private final User actor; // null on public sign-up
 
     public RegistrationPage(UserManager userManager) {
-        this.userManager = userManager;
+        this(userManager, null);
+    }
 
-        setTitle("Registration Page");
-        setSize(400, 200);
+    public RegistrationPage(UserManager userManager, User actor) {
+        if (actor != null && !actor.hasPermission(Permission.REGISTER_PATIENTS)
+                && !actor.hasPermission(Permission.MANAGE_ACCOUNTS)) {
+            throw new SecurityException("This account type cannot register users.");
+        }
+        this.userManager = userManager;
+        this.actor = actor;
+        boolean chooseType = actor != null && actor.hasPermission(Permission.MANAGE_ACCOUNTS);
+
+        setTitle(actor == null ? "Registration Page" : chooseType ? "Manage Accounts" : "Register Patient");
+        setSize(400, chooseType ? 240 : 200);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null); // Center the frame on the screen
 
         // Create components
-        JPanel registrationPanel = new JPanel(new GridLayout(5, 2));
+        JPanel registrationPanel = new JPanel(new GridLayout(chooseType ? 6 : 5, 2));
 
-        JLabel nameLabel = new JLabel("Name:");
-        registrationPanel.add(nameLabel);
+        registrationPanel.add(new JLabel("Name:"));
         nameField = new JTextField();
         registrationPanel.add(nameField);
 
-        JLabel emailLabel = new JLabel("Email:");
-        registrationPanel.add(emailLabel);
+        registrationPanel.add(new JLabel("Email:"));
         emailField = new JTextField();
         registrationPanel.add(emailField);
 
-        JLabel passwordLabel = new JLabel("Password:");
-        registrationPanel.add(passwordLabel);
+        registrationPanel.add(new JLabel("Password:"));
         passwordField = new JPasswordField();
         registrationPanel.add(passwordField);
 
-        JLabel confirmPasswordLabel = new JLabel("Confirm Password:");
-        registrationPanel.add(confirmPasswordLabel);
+        registrationPanel.add(new JLabel("Confirm Password:"));
         confirmPasswordField = new JPasswordField();
         registrationPanel.add(confirmPasswordField);
+
+        if (chooseType) {
+            registrationPanel.add(new JLabel("Account type:"));
+            typeBox = new JComboBox<>(UserType.values());
+            typeBox.setSelectedItem(UserType.CLIENT);
+            registrationPanel.add(typeBox);
+        }
 
         JButton registerButton = new JButton("Register");
         registerButton.addActionListener(new ActionListener() {
@@ -54,7 +75,6 @@ public class RegistrationPage extends JFrame {
         });
         registrationPanel.add(registerButton);
 
-        // Add panel to the frame
         add(registrationPanel);
     }
 
@@ -75,20 +95,22 @@ public class RegistrationPage extends JFrame {
             return;
         }
 
-        // Registration successful
-        boolean success = userManager.registerUser(email, String.valueOf(password), UserType.CLIENT);
-        if (success) {
-            JOptionPane.showMessageDialog(this, "Registration successful");
-            dispose(); // Close registration window
-        } else {
-            JOptionPane.showMessageDialog(this, "Registration failed. User already exists.", "Error", JOptionPane.ERROR_MESSAGE);
+        UserType type = typeBox != null ? (UserType) typeBox.getSelectedItem() : UserType.CLIENT;
+        try {
+            boolean success = userManager.createAccount(actor, email, String.valueOf(password), type, name);
+            if (success) {
+                JOptionPane.showMessageDialog(this, "Registration successful");
+                dispose(); // Close registration window
+            } else {
+                JOptionPane.showMessageDialog(this, "Registration failed. User already exists.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        } catch (IllegalArgumentException | SecurityException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     public static void main(String[] args) {
-        // Create an instance of UserManager
         UserManager userManager = new UserManager();
-
         SwingUtilities.invokeLater(() -> new RegistrationPage(userManager).setVisible(true));
     }
 }

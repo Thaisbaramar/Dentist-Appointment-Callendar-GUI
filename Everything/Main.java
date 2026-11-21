@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import Printing.PrintScheduledAppointments;
 
 public class Main {
 
@@ -17,46 +16,35 @@ public class Main {
     }
 
     private static void initializeGUI() {
-        ExecutorService executor = Executors.newCachedThreadPool();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        try {
-            // Create an instance of UserManager
-            UserManager userManager = new UserManager();
+        // Load accounts and appointments from the files off the UI thread,
+        // then show the login window on the UI thread.
+        executor.submit(() -> {
+            try {
+                UserManager userManager = new UserManager();
+                registerSampleAccounts(userManager);
+                AppointmentStore store = new AppointmentStore();
 
-            // Register staff 
-            userManager.createStaff("staff1@", "admin1");
-            userManager.createStaff("staff2@", "admin2");
-            userManager.createStaff("staff3@", "admin3");
-            // Register Dentist
-            userManager.registerUser("dentist1@example.com", "teeth1", UserType.DENTIST);
+                SwingUtilities.invokeLater(() -> {
+                    LoginPage loginPage = new LoginPage(userManager, store);
+                    loginPage.setVisible(true);
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        executor.shutdown();
+    }
 
-            // Create an instance of LoginPage with UserManager
-            LoginPage loginPage = new LoginPage(userManager);
-            loginPage.setVisible(true);
-
-            // Submit task to handle login process
-            executor.submit(() -> {
-                try {
-                    // Wait for the login process to complete before proceeding
-                    UserType currentUser = loginPage.waitForLogin();
-
-                    // Once logged in, proceed to display calendar and time slots
-                    if (currentUser != null) {
-                        SwingUtilities.invokeLater(() -> {
-                            CalendarPage calendarPage = new CalendarPage(currentUser);
-                            calendarPage.setVisible(true);
-                        });
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // Shutdown the executor when no more tasks need to be submitted
-            executor.shutdown();
-        }
+    // Accounts that exist from the first run, one for each access level
+    private static void registerSampleAccounts(UserManager userManager) {
+        userManager.ensureUser("staff1@", "admin1", UserType.STAFF, "Staff One");
+        userManager.ensureUser("staff2@", "admin2", UserType.STAFF, "Staff Two");
+        userManager.ensureUser("staff3@", "admin3", UserType.STAFF, "Staff Three");
+        userManager.ensureUser("dentist1@example.com", "teeth1", UserType.DENTIST, "Dr. Dentist");
+        userManager.ensureUser("secretary1@example.com", "desk1", UserType.SECRETARY, "Front Desk");
+        userManager.ensureUser("patient1@example.com", "patient1", UserType.CLIENT, "Test Patient");
     }
 
     // Method to display the schedule appointment frame

@@ -1,4 +1,4 @@
- package Everything;
+package Everything;
 import javax.swing.*;
 
 import Printing.User;
@@ -6,7 +6,6 @@ import Printing.UserManager;
 
 import java.awt.*;
 import java.awt.event.*;
-import java.io.*;
 
 public class LoginPage extends JFrame {
 
@@ -18,15 +17,17 @@ public class LoginPage extends JFrame {
 
     // Data storage
     private UserManager userManager;
+    private AppointmentStore store;
 
-    public LoginPage(UserManager userManager) {
+    public LoginPage(UserManager userManager, AppointmentStore store) {
         // Initialize JFrame
         setTitle("Login Page");
         setSize(300, 150);
+        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        // Initialize UserManager
         this.userManager = userManager;
+        this.store = store;
 
         // Initialize GUI components
         JPanel loginPanel = new JPanel();
@@ -59,17 +60,11 @@ public class LoginPage extends JFrame {
         loginPanel.add(goToRegistrationButton);
 
         add(loginPanel);
-        setVisible(true);
-    }
-
-    // Make waitForLogin() method public
-    public UserType waitForLogin() {
-        // TODO: Implement login logic here
-        return null; // Placeholder return statement
+        getRootPane().setDefaultButton(loginButton); // Enter key logs in
     }
 
     private void login() {
-        String enteredEmail = emailField.getText();
+        String enteredEmail = emailField.getText().trim();
         String enteredPassword = new String(passwordField.getPassword());
 
         // Retrieve the user from UserManager
@@ -77,13 +72,10 @@ public class LoginPage extends JFrame {
 
         if (user != null) {
             // User found
-            if (user.getPassword().equals(enteredPassword)) {
+            if (user.authenticate(enteredPassword)) {
                 // Correct password
                 JOptionPane.showMessageDialog(this, "Login successful!", "Success", JOptionPane.INFORMATION_MESSAGE);
-                // Return the user type
-                UserType userType = user.getUserType();
-                // Perform actions based on user type (e.g., open specific page)
-                openHomePage(userType);
+                openHomePage(user);
             } else {
                 // Incorrect password
                 JOptionPane.showMessageDialog(this, "Login failed. Incorrect password.", "Login Failed", JOptionPane.ERROR_MESSAGE);
@@ -94,29 +86,32 @@ public class LoginPage extends JFrame {
         }
     }
 
-    private void openHomePage(UserType userType) {
-        // Open the CalendarPage for all types of users
-        CalendarPage calendarPage = new CalendarPage(userType);
+    private void openHomePage(User user) {
+        // Every account type opens the calendar; what it can do there depends on its permissions
+        CalendarPage calendarPage = new CalendarPage(user, userManager, store);
         calendarPage.setVisible(true);
         // Close the login page
         dispose();
+        // Tell the patient what happened to their appointments since the last visit
+        calendarPage.showNotifications(true);
     }
 
-
     private void openRegistration() {
-        RegistrationPage registrationPage = new RegistrationPage(userManager); // Pass userManager to RegistrationPage constructor
+        // Public sign-up always creates a patient (client) account
+        RegistrationPage registrationPage = new RegistrationPage(userManager);
         registrationPage.setVisible(true);
     }
 
     public static void main(String[] args) {
-        UserManager userManager = new UserManager(); // Initialize UserManager
-        userManager.createStaff("staff_username", "staff_password"); // Create staff user
-        userManager.registerUser("dentist@example.com", "dentist_password", UserType.DENTIST); // Register dentist user
-        userManager.registerUser("client@example.com", "client_password", UserType.CLIENT); // Register client user
+        UserManager userManager = new UserManager();
+        userManager.ensureUser("secretary1@example.com", "desk1", UserType.SECRETARY, "Front Desk");
+        userManager.ensureUser("dentist1@example.com", "teeth1", UserType.DENTIST, "Dr. Dentist");
+        userManager.ensureUser("patient1@example.com", "patient1", UserType.CLIENT, "Test Patient");
+        AppointmentStore store = new AppointmentStore();
 
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                new LoginPage(userManager);
+                new LoginPage(userManager, store).setVisible(true);
             }
         });
     }

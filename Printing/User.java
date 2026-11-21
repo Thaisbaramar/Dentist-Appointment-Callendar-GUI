@@ -1,19 +1,22 @@
 package Printing;
 import java.util.Objects;
 
+import Everything.Permission;
 import Everything.UserType;
 
-// Abstract User class
+// Base User class. What a user may do comes from the permissions of their UserType.
 public abstract class User {
     private final String email;
-    private String password;
+    private final String password;
     private final UserType userType;
+    private final String name;
 
     // Constructor
-    public User(String email, String password, UserType userType) {
+    public User(String email, String password, UserType userType, String name) {
         this.email = Objects.requireNonNull(email, "Email cannot be null");
         this.password = Objects.requireNonNull(password, "Password cannot be null");
         this.userType = Objects.requireNonNull(userType, "User type cannot be null");
+        this.name = Objects.requireNonNull(name, "Name cannot be null");
     }
 
     // Getters
@@ -24,7 +27,11 @@ public abstract class User {
     public UserType getUserType() {
         return userType;
     }
-    
+
+    public String getName() {
+        return name;
+    }
+
     public String getPassword() {
         return password;
     }
@@ -34,80 +41,53 @@ public abstract class User {
         return this.password.equals(password);
     }
 
-    // Abstract methods for access permissions
-    public abstract boolean hasAccessToTimeSlots();
+    public boolean hasPermission(Permission permission) {
+        return userType.can(permission);
+    }
 
-    public abstract boolean hasAccessToScheduleAppointments();
+    public boolean isSameUser(User other) {
+        return other != null && email.equalsIgnoreCase(other.email);
+    }
 
-    public abstract boolean hasAccessToCancelAppointments();
+    // Convenience checks kept from the first version
+    public boolean hasAccessToTimeSlots() {
+        return true;
+    }
+
+    public boolean hasAccessToScheduleAppointments() {
+        return hasPermission(Permission.BOOK_FOR_SELF) || hasPermission(Permission.BOOK_FOR_PATIENTS);
+    }
+
+    public boolean hasAccessToCancelAppointments() {
+        return hasPermission(Permission.CANCEL_OWN) || hasPermission(Permission.CANCEL_ANY);
+    }
+
+    @Override
+    public String toString() {
+        return name + " (" + userType.getLabel() + ")";
+    }
 }
 
-// Concrete subclass Dentist
 class Dentist extends User {
-    public Dentist(String email, String password) {
-        super(email, password, UserType.DENTIST);
-    }
-
-    // Implement abstract methods specific to Dentist
-    @Override
-    public boolean hasAccessToTimeSlots() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAccessToScheduleAppointments() {
-        return false;
-    }
-
-    @Override
-    public boolean hasAccessToCancelAppointments() {
-        return false;
+    public Dentist(String email, String password, String name) {
+        super(email, password, UserType.DENTIST, name);
     }
 }
 
-// Concrete subclass Staff
+class Secretary extends User {
+    public Secretary(String email, String password, String name) {
+        super(email, password, UserType.SECRETARY, name);
+    }
+}
+
 class Staff extends User {
-    public Staff(String email, String password) {
-        super(email, password, UserType.STAFF);
-    }
-
-    // Implement abstract methods specific to Staff
-    @Override
-    public boolean hasAccessToTimeSlots() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAccessToScheduleAppointments() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAccessToCancelAppointments() {
-        return true;
+    public Staff(String email, String password, String name) {
+        super(email, password, UserType.STAFF, name);
     }
 }
 
-// Concrete subclass Client
 class Client extends User {
-    public Client(String email, String password) {
-        super(email, password, UserType.CLIENT);
-    }
-
-    // Implement abstract methods specific to Client
-    @Override
-    public boolean hasAccessToTimeSlots() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAccessToScheduleAppointments() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAccessToCancelAppointments() {
-        return false;
+    public Client(String email, String password, String name) {
+        super(email, password, UserType.CLIENT, name);
     }
 }
-

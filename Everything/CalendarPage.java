@@ -6,25 +6,30 @@ import java.awt.event.*;
 import java.time.*;
 import java.util.*;
 
+import Printing.User;
+import Printing.UserManager;
+
 public class CalendarPage extends JFrame {
     private String[] daysOfWeek = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
     private JLabel monthLabel;
     private YearMonth currentYearMonth;
-    private Map<LocalDate, Boolean> fullDaysMap;
-    private UserType currentUser;
+    private final User currentUser;
+    private final UserManager userManager;
+    private final AppointmentStore store;
     private JPanel calendarPanel;
     private Map<String, Set<String>> scheduledAppointments;
 
-    public CalendarPage(UserType currentUser) {
+    public CalendarPage(User currentUser, UserManager userManager, AppointmentStore store) {
         this.currentUser = currentUser;
-        setTitle("Calendar Page");
+        this.userManager = userManager;
+        this.store = store;
+        setTitle("Calendar Page - " + currentUser.getName() + " (" + currentUser.getUserType().getLabel() + ")");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(800, 600);
         setLocationRelativeTo(null);
 
         scheduledAppointments = new HashMap<>();
 
-        fullDaysMap = new HashMap<>();
         currentYearMonth = YearMonth.now();
 
         JPanel mainPanel = new JPanel(new BorderLayout());
@@ -34,26 +39,26 @@ public class CalendarPage extends JFrame {
         monthLabel.setFont(new Font("Arial", Font.BOLD, 24)); // Set font size for the month label
         mainPanel.add(monthLabel, BorderLayout.NORTH);
 
-        // Create a panel for the weekdays
+        // Weekday header on top of the day grid (the original put both in CENTER, so the header was lost)
         JPanel weekDaysPanel = new JPanel(new GridLayout(1, 7));
         createWeekDaysLabels(weekDaysPanel);
-        mainPanel.add(weekDaysPanel, BorderLayout.CENTER);
-
-        // Create a panel for the calendar days
         calendarPanel = new JPanel(new GridLayout(6, 7));
         createCalendarButtons(calendarPanel);
-        mainPanel.add(calendarPanel, BorderLayout.CENTER);
+        JPanel gridPanel = new JPanel(new BorderLayout());
+        gridPanel.add(weekDaysPanel, BorderLayout.NORTH);
+        gridPanel.add(calendarPanel, BorderLayout.CENTER);
+        mainPanel.add(gridPanel, BorderLayout.CENTER);
 
         // Create navigation buttons to switch to the previous or next month
         JPanel navigationPanel = createNavigationPanel();
         mainPanel.add(navigationPanel, BorderLayout.SOUTH);
 
         add(mainPanel);
-        setVisible(true);
     }
 
     private void openAppointmentList() {
-        AppointmentListFrame appointmentListFrame = new AppointmentListFrame(currentUser, scheduledAppointments);
+        AppointmentListFrame appointmentListFrame = new AppointmentListFrame(currentUser, store, this);
+        setVisible(false);
         appointmentListFrame.setVisible(true);
     }
 
@@ -99,8 +104,10 @@ public class CalendarPage extends JFrame {
         } else {
             dayButton.setForeground(Color.BLACK);
             dayButton.setBackground(Color.WHITE);
-            if (fullDaysMap.containsKey(buttonDate) && fullDaysMap.get(buttonDate)) {
+            if (store.isFull(buttonDate)) {
                 dayButton.setForeground(Color.RED);
+            } else if (store.hasAppointmentsVisibleTo(currentUser, buttonDate)) {
+                dayButton.setBackground(new Color(200, 225, 255)); // there is something you can see on this day
             }
         }
     }
@@ -110,7 +117,7 @@ public class CalendarPage extends JFrame {
     }
 
     private void openTimeSlotsPage(int selectedDay) {
-        TimeSlots timeSlots = new TimeSlots(currentUser, selectedDay, currentYearMonth.getMonthValue(), currentYearMonth.getYear(), this);
+        TimeSlots timeSlots = new TimeSlots(currentUser, userManager, store, selectedDay, currentYearMonth.getMonthValue(), currentYearMonth.getYear(), this);
         setVisible(false);
         timeSlots.setVisible(true);
     }
@@ -143,25 +150,74 @@ public class CalendarPage extends JFrame {
         });
         navigationPanel.add(viewAppointmentsButton);
 
+        // Only people who may register patients / manage accounts see these buttons
+        if (currentUser.hasPermission(Permission.MANAGE_ACCOUNTS)) {
+            JButton manageButton = new JButton("Manage Accounts");
+            manageButton.addActionListener(e -> new RegistrationPage(userManager, currentUser).setVisible(true));
+            navigationPanel.add(manageButton);
+        } else if (currentUser.hasPermission(Permission.REGISTER_PATIENTS)) {
+            JButton registerButton = new JButton("Register Patient");
+            registerButton.addActionListener(e -> new RegistrationPage(userManager, currentUser).setVisible(true));
+            navigationPanel.add(registerButton);
+        }
+
+        // Patients get a button to read what the dentist or front desk told them
+        if (currentUser.hasPermission(Permission.VIEW_OWN_APPOINTMENTS)) {
+            JButton notificationsButton = new JButton("Notifications");
+            notificationsButton.addActionListener(e -> showNotifications(false));
+            navigationPanel.add(notificationsButton);
+        }
+
+        JButton logoutButton = new JButton("Log out");
+        logoutButton.addActionListener(e -> {
+            dispose();
+            new LoginPage(userManager, store).setVisible(true);
+        });
+        navigationPanel.add(logoutButton);
+
         return navigationPanel;
     }
     
     public void updateCalendarButton(int selectedDay, String timeSlot) {
-        for (Component component : calendarPanel.getComponents()) {
-            if (component instanceof JButton) {
-                JButton button = (JButton) component;
-                if (button.getText().equals(Integer.toString(selectedDay))) {
-                    setButtonStyle(button, currentYearMonth.atDay(selectedDay), LocalDate.now());
-                    break;
-                }
+        refresh();
+    }
+
+    /** Shows the notifications for the logged-in user: only the unread ones, or all of them. */
+    public void showNotifications(boolean onlyUnread) {
+        java.util.List<Printing.Notification> list = onlyUnread ? store.unreadFor(currentUser) : store.notificationsFor(currentUser);
+        if (list.isEmpty()) {
+            if (!onlyUnread) {
+                JOptionPane.showMessageDialog(this, "No notifications.", "Notifications", JOptionPane.INFORMATION_MESSAGE);
             }
+            return;
         }
+        StringBuilder text = new StringBuilder();
+        for (Printing.Notification n : list) {
+            text.append(n.isRead() ? "" : "* ").append(n.getTime().toLocalDate()).append(" ")
+                .append(String.format("%02d:%02d", n.getTime().getHour(), n.getTime().getMinute()))
+                .append(" - ").append(n.getMessage()).append("\n\n");
+        }
+        JTextArea area = new JTextArea(text.toString(), 10, 48);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setEditable(false);
+        JOptionPane.showMessageDialog(this, new JScrollPane(area), "Notifications (* = new)", JOptionPane.INFORMATION_MESSAGE);
+        store.markAllRead(currentUser);
+    }
+
+    /** Redraws the day buttons from the current appointment data. */
+    public void refresh() {
+        createCalendarButtons(calendarPanel);
+        calendarPanel.revalidate();
+        calendarPanel.repaint();
     }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            UserType userType = UserType.CLIENT; // Or UserType.DENTIST, UserType.STAFF, depending on your requirement
-            CalendarPage calendarPage = new CalendarPage(userType);
+            UserManager userManager = new UserManager();
+            userManager.ensureUser("patient1@example.com", "patient1", UserType.CLIENT, "Test Patient");
+            CalendarPage calendarPage = new CalendarPage(userManager.getUserByEmail("patient1@example.com"), userManager, new AppointmentStore());
+            calendarPage.setVisible(true);
         });
     }
 }
