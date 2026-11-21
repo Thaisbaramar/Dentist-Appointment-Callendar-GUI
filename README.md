@@ -5,7 +5,8 @@ This application is designed to streamline the management of dental appointments
 ## Features
 
 ### User Registration and Login
-- Users can sign up and log in with distinct roles—clients, staff, or dentists.
+- Four account types with different access levels: **Client** (patient), **Dentist**, **Secretary** and **Staff** (see the table below).
+- Anyone can sign up from the login page, but public sign-up always creates a **Client** account. Secretaries register patients, and Staff create accounts of any type.
 
 ### Appointment Scheduling
 - Easily view available time slots and book appointments.
@@ -35,13 +36,39 @@ To get started with the Dental Appointment Scheduling System, follow these steps
 
 3. **Compile the Java files**: 
     ```bash
-    javac Everything/*.java
+    javac -d out Everything/*.java Printing/*.java
     ```
 
 4. **Run the application**: 
     ```bash
-    java Everything.Main
+    java -cp out Everything.Main
     ```
+
+5. **Run the access-control tests** (optional):
+    ```bash
+    javac -cp out -d out tests/AccessControlTest.java
+    java -cp out AccessControlTest
+    ```
+
+## Access levels
+
+| Permission | Client | Dentist | Secretary | Staff |
+|---|:-:|:-:|:-:|:-:|
+| See own appointments | yes | | | yes |
+| See all appointments (with patient names) | | yes | yes | yes |
+| Book for themself | yes | | | yes |
+| Book for any patient | | | yes | yes |
+| Cancel own appointments | yes | | | yes |
+| Confirm an appointment (patient is notified) | | yes | | yes |
+| Cancel any appointment | | yes (with a reason; patient is notified) | yes | yes |
+| Register patients | | | yes | yes |
+| Create accounts of any type | | | | yes |
+
+A new appointment starts as **pending**. The dentist confirms it or cancels it with a reason, and the patient sees a notification the next time they log in (or under the **Notifications** button). A patient is also notified when the secretary books or cancels for them. A patient canceling their own appointment sends no notice.
+
+The rules live in `Permission` and `UserType`. They are enforced in `AppointmentStore` and `UserManager`, not only by hiding buttons, so a screen that forgets to check still cannot break them (a disallowed call throws `SecurityException`).
+
+Accounts for trying it out (created on first run): `patient1@example.com` / `patient1`, `dentist1@example.com` / `teeth1`, `secretary1@example.com` / `desk1`, `staff1@` / `admin1`.
 
 ## Usage
 
@@ -92,13 +119,17 @@ To get started with the Dental Appointment Scheduling System, follow these steps
 ### `TimeSlotsRunnable`
 - Implements the `Runnable` interface to simulate the process of loading time slots based on user type and date. Introduces a brief delay to simulate loading time, which can improve the user experience by running in a separate thread.
 
-### `UserType`
-- An enum that defines different user roles: `CLIENT`, `DENTIST`, and `STAFF`. Helps categorize users and manage permissions within the application.
+### `UserType` and `Permission`
+- `UserType` lists the roles: `CLIENT`, `DENTIST`, `SECRETARY` and `STAFF`. Each role has a set of `Permission` values (see the table above).
+
+### `AppointmentStore`
+- Holds all appointments and patient notifications, saves them to `TxtFiles/appointments.txt` and `TxtFiles/notifications.txt`, and checks the user's permissions on every list, book, confirm and cancel.
 
 ## File Persistence
 
-### Saving Appointments
-- The `ScheduledAppointmentFrame` class automatically saves scheduled appointments to a file named `scheduledAppointments.txt` whenever changes are made.
+### Appointments
+- `AppointmentStore` saves every change to `TxtFiles/appointments.txt` (`date|time|patient email|patient name|status`) and loads it when the application starts. Appointments are now keyed by date and time.
 
-### Loading Appointments
-- The `TimeSlotLoader` class is responsible for loading scheduled appointments from a file when the application starts, ensuring that any previously saved appointments are available for the user.
+### Accounts
+- `TxtFiles/SavedInfo.txt` uses `email:password:TYPE:name`. Old three-field lines still load (the name defaults to the email). Passwords are still stored as plain text, which is fine for a class project but should be hashed before real use.
+- `ScheduledAppointmentFrame` and `TimeSlotLoader` are from the first version and are no longer used by the main flow.
